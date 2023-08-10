@@ -288,33 +288,6 @@ func (s *GKEStore) GetKubeconfigForPath(path string) ([]byte, error) {
 		return nil, fmt.Errorf("cluster CA certificate not found for cluster=%s in project with ID %q", contextName, projectID)
 	}
 
-	authPluginConfig := make(map[string]string)
-
-	// supply authentication information based on the configured auth option
-	if s.Config.GKEAuthentication == nil || *s.Config.GKEAuthentication.AuthenticationType == types.GcloudAuthentication {
-		// construct an AuthInfo that contains the same information if I would have uses `gcloud container clusters get-credentials`
-		authPluginConfig = map[string]string{
-			// "access-token": token.AccessToken,
-			// "expiry": token.Expiry.Format(time.RFC3339), // make sure has proper format
-			"cmd-path": gcloudBinaryPath,
-			"cmd-args": "config config-helper --format=json", // get the credentials
-			// "expiry-key": token.Expiry.Format(time.RFC3339),
-			"expiry-key": "{.credential.token_expiry}",
-			// "token-key": token.AccessToken,
-			"token-key": "{.credential.access_token}",
-		}
-
-	} else if s.Config.GKEAuthentication != nil && *s.Config.GKEAuthentication.AuthenticationType == types.ServiceAccountAuthentication {
-		// using service accounts, the kubeconfig does not contain any client-credentials
-		// Instead, the the switch.sh script has to set the env variable GOOGLE_APPLICATION_CREDENTIALS=path/to/gsa-key.json
-		// on the shell session.
-		// This way, the gcp auth provider called by kubectl can discover the credentials via the env variable.
-		// see: https://cloud.google.com/kubernetes-engine/docs/how-to/api-server-authentication#environments-without-gcloud
-		authPluginConfig = map[string]string{
-			"scopes": "https://www.googleapis.com/auth/cloud-platform",
-		}
-	}
-
 	kubeconfig := &types.KubeConfig{
 		TypeMeta: types.TypeMeta{
 			APIVersion: "v1",
@@ -342,9 +315,9 @@ func (s *GKEStore) GetKubeconfigForPath(path string) ([]byte, error) {
 				Name: contextName,
 				User: types.User{
 
-					AuthProvider: &types.AuthProvider{
-						Name:   "gcp",
-						Config: authPluginConfig,
+					ExecProvider: &types.ExecProvider{
+						APIVersion: "client.authentication.k8s.io/v1beta1",
+						Command:    "gke-gcloud-auth-plugin",
 					},
 				},
 			},
